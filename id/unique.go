@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base32"
-	"encoding/base64"
 	"encoding/binary"
 	"net"
 	"os"
@@ -65,10 +64,10 @@ func UniqueN(n int) string {
 // RandomText(len) - returns random text of the specified length
 func RandomText(l int) string {
 
-	r := make([]byte, (l*3+3)/4)
+	r := make([]byte, (l*5+7)/8)
 	rand.Read(r)
 
-	s := base64.RawURLEncoding.EncodeToString(r)
+	s := idEncoder.EncodeToString(r)
 	return s[0:l]
 }
 

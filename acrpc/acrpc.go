@@ -8,6 +8,7 @@ package acrpc
 import (
 	"encoding/binary"
 	"errors"
+	"io"
 	"net"
 	"time"
 
@@ -47,50 +48,44 @@ type marshalable interface {
 
 var dl = diag.Logger("acrpc")
 
-func (c *APC) Call(fn uint32, req marshalable, res marshalable, content []byte) ([]byte, error) {
+func (c *APC) sendRequest(conn net.Conn, fn uint32, req marshalable, clen int) error {
 
 	// build request
 	data, err := req.Marshal()
 	if err != nil {
 		dl.Problem("cannot marshal AC/RPC: %v", err)
-		return nil, err
+		return err
 	}
+
 	prot := &acProto{
 		Version:    PHVERSION,
 		Flags:      FLAG_WANTREPLY,
 		Type:       fn,
 		MsgIdNo:    c.MsgId,
 		DataLen:    uint32(len(data)),
-		ContentLen: uint32(len(content)),
+		ContentLen: uint32(clen),
 	}
-
-	// connect
-	dl.Debug("connect to %s", c.Addr)
-	conn, err := net.DialTimeout("tcp", c.Addr, c.Timeout)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(c.Timeout))
 
 	// send request
-	//   header, data(protobuf), content
+	//   header, data(protobuf), [content]
 	err = binary.Write(conn, binary.BigEndian, prot)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	_, err = conn.Write(data)
 	if err != nil {
-		return nil, err
-	}
-	_, err = conn.Write(content)
-	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// read response
+	return nil
+}
+
+func (c *APC) recvReply(conn net.Conn, res marshalable) (*acProto, error) {
+
+	prot := &acProto{}
+
 	//   header, data(protobuf), content
-	err = binary.Read(conn, binary.BigEndian, prot)
+	err := binary.Read(conn, binary.BigEndian, prot)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +109,6 @@ func (c *APC) Call(fn uint32, req marshalable, res marshalable, content []byte) 
 		return nil, err
 	}
 
-	rcontent := make([]byte, prot.ContentLen)
-	_, err = conn.Read(rcontent)
-	if err != nil {
-		return nil, err
-	}
-
 	// unmarshal data
 	err = res.Unmarshal(resdata)
 	if err != nil {
@@ -128,5 +117,118 @@ func (c *APC) Call(fn uint32, req marshalable, res marshalable, content []byte) 
 
 	dl.Debug("recvd data %+v", res)
 
+	return prot, nil
+}
+
+func (c *APC) Call(fn uint32, req marshalable, res marshalable, content []byte) ([]byte, error) {
+
+	// connect
+	dl.Debug("connect to %s", c.Addr)
+	conn, err := net.DialTimeout("tcp", c.Addr, c.Timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(c.Timeout))
+
+	// send request
+	err = c.sendRequest(conn, fn, req, len(content))
+	if err != nil {
+		return nil, err
+	}
+
+	// send content
+	_, err = conn.Write(content)
+	if err != nil {
+		return nil, err
+	}
+
+	// read response
+	prot, err := c.recvReply(conn, res)
+	if err != nil {
+		return nil, err
+	}
+
+	// return content
+	rcontent := make([]byte, prot.ContentLen)
+	_, err = conn.Read(rcontent)
+	if err != nil {
+		return nil, err
+	}
+
 	return rcontent, nil
+}
+
+func (c *APC) Put(fn uint32, req marshalable, res marshalable, clen int32, r io.Reader) ([]byte, error) {
+
+	// connect
+	dl.Debug("connect to %s", c.Addr)
+	conn, err := net.DialTimeout("tcp", c.Addr, c.Timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(c.Timeout))
+
+	// send request
+	err = c.sendRequest(conn, fn, req, int(clen))
+	if err != nil {
+		return nil, err
+	}
+
+	// send content
+	_, err = io.CopyN(conn, r, int64(clen))
+	if err != nil {
+		return nil, err
+	}
+
+	// read response
+	prot, err := c.recvReply(conn, res)
+	if err != nil {
+		return nil, err
+	}
+
+	// return content
+	rcontent := make([]byte, prot.ContentLen)
+	_, err = conn.Read(rcontent)
+	if err != nil {
+		return nil, err
+	}
+
+	return rcontent, nil
+}
+
+// caller must close returned conn
+func (c *APC) Get(fn uint32, req marshalable, res marshalable, content []byte) (int, io.ReadCloser, error) {
+
+	// connect
+	dl.Debug("connect to %s", c.Addr)
+	conn, err := net.DialTimeout("tcp", c.Addr, c.Timeout)
+	if err != nil {
+		return 0, nil, err
+	}
+	conn.SetDeadline(time.Now().Add(c.Timeout))
+
+	// send request
+	err = c.sendRequest(conn, fn, req, len(content))
+	if err != nil {
+		conn.Close()
+		return 0, nil, err
+	}
+
+	// send content
+	_, err = conn.Write(content)
+	if err != nil {
+		conn.Close()
+		return 0, nil, err
+	}
+
+	// read response
+	prot, err := c.recvReply(conn, res)
+	if err != nil {
+		conn.Close()
+		return 0, nil, err
+	}
+
+	return int(prot.ContentLen), conn, nil
 }

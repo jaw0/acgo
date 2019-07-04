@@ -164,6 +164,10 @@ func SetConfig(cf *Config) {
 	}
 }
 
+func SetDebugAll(x bool) {
+	debugall = x
+}
+
 func getConfig() *Config {
 	lock.RLock()
 	defer lock.RUnlock()

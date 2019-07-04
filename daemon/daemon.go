@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +22,9 @@ const (
 )
 
 const ENVVAR = "_dmode"
+
+var PidfileDir = "/var/run"
+var Pidfile = ""
 
 // daemon.Ize() - run program as a daemon
 func Ize() {
@@ -52,6 +56,13 @@ func Ize() {
 	var sigchan = make(chan os.Signal, 5)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
 
+	if Pidfile == "" && PidfileDir != "" {
+		Pidfile = PidfileDir + path.Base(prog) + ".pid"
+	}
+	if Pidfile != "" {
+		SavePidFile(Pidfile)
+	}
+
 	// watch + restart
 	for {
 		os.Setenv(ENVVAR, "2")
@@ -82,6 +93,9 @@ func Ize() {
 		}
 		if st.Success() {
 			// done
+			if Pidfile != "" {
+				RemovePidFile(Pidfile)
+			}
 			os.Exit(0)
 		}
 
@@ -116,4 +130,21 @@ func SavePidFile(file string) error {
 
 func RemovePidFile(file string) {
 	os.Remove(file)
+}
+
+func SigExiter() {
+	var sigchan = make(chan os.Signal, 5)
+	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
+
+	select {
+	case n := <-sigchan:
+		switch n {
+		case syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT:
+			os.Exit(0)
+		case syscall.SIGHUP:
+			os.Exit(1)
+		default:
+			os.Exit(2)
+		}
+	}
 }

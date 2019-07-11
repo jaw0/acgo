@@ -57,7 +57,7 @@ func Ize() {
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
 
 	if Pidfile == "" && PidfileDir != "" {
-		Pidfile = PidfileDir + path.Base(prog) + ".pid"
+		Pidfile = PidfileDir + "/" + path.Base(prog) + ".pid"
 	}
 	if Pidfile != "" {
 		SavePidFile(Pidfile)

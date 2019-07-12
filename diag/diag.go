@@ -72,7 +72,7 @@ func init() {
 	flag.BoolVar(&debugall, "d", false, "enable all debugging")
 
 	hostname, _ = os.Hostname()
-	prog, err := os.Executable()
+	prog, _ := os.Executable()
 	progname = path.Base(prog)
 }
 

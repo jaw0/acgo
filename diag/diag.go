@@ -26,6 +26,7 @@ import (
 	"log/syslog"
 	"os"
 	"os/exec"
+	"path"
 	"runtime"
 	"strings"
 	"sync"
@@ -69,6 +70,10 @@ type logconf struct {
 
 func init() {
 	flag.BoolVar(&debugall, "d", false, "enable all debugging")
+
+	hostname, _ = os.Hostname()
+	prog, err := os.Executable()
+	progname = path.Base(prog)
 }
 
 func (d *Diag) Verbose(format string, args ...interface{}) {
@@ -142,8 +147,9 @@ func Fatal(format string, args ...interface{}) {
 // ################################################################
 
 func Init(prog string) {
-	progname = prog
-	hostname, _ = os.Hostname()
+	if prog != "" {
+		progname = prog
+	}
 }
 
 func Logger(sect string) *Diag {

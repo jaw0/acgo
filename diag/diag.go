@@ -173,6 +173,9 @@ func SetConfig(cf *Config) {
 func SetDebugAll(x bool) {
 	debugall = x
 }
+func SetStderr(x bool) {
+	usestderr = x
+}
 
 func getConfig() *Config {
 	lock.RLock()

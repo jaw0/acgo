@@ -100,19 +100,22 @@ func (c *APC) recvReply(conn net.Conn, res marshalable) (*acProto, error) {
 		return nil, errors.New("protocol botched: invalid response")
 	}
 	if prot.Flags&(FLAG_DATA_ENCR|FLAG_CONT_ENCR) != 0 {
-		return nil, errors.New("AC/RPC unsupported encryption algorithm")
+		return prot, errors.New("AC/RPC unsupported encryption algorithm")
+	}
+	if prot.Flags&FLAG_ISERROR != 0 {
+		return prot, errors.New("error flag")
 	}
 
 	resdata := make([]byte, prot.DataLen)
 	_, err = conn.Read(resdata)
 	if err != nil {
-		return nil, err
+		return prot, err
 	}
 
 	// unmarshal data
 	err = res.Unmarshal(resdata)
 	if err != nil {
-		return nil, err
+		return prot, err
 	}
 
 	dl.Debug("recvd data %+v", res)

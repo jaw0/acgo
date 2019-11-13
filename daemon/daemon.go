@@ -41,8 +41,9 @@ func Ize() {
 		// initial execution
 		// switch to the background
 		os.Setenv(ENVVAR, "1")
-		p := &os.ProcAttr{}
-		os.StartProcess(prog, os.Args, p)
+		dn, _ := os.OpenFile(os.DevNull, os.O_RDWR, 0666)
+		pa := &os.ProcAttr{Files: []*os.File{dn, dn, os.Stderr}}
+		os.StartProcess(prog, os.Args, pa)
 		os.Exit(0)
 	}
 
@@ -66,7 +67,9 @@ func Ize() {
 	// watch + restart
 	for {
 		os.Setenv(ENVVAR, "2")
-		p, err := os.StartProcess(prog, os.Args, &os.ProcAttr{})
+		dn, _ := os.OpenFile(os.DevNull, os.O_RDWR, 0666)
+		pa := &os.ProcAttr{Files: []*os.File{dn, dn, os.Stderr}}
+		p, err := os.StartProcess(prog, os.Args, pa)
 		if err != nil {
 			fmt.Printf("cannot start %s: %v", prog, err)
 			os.Exit(2)

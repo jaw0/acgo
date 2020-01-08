@@ -45,12 +45,14 @@ var usestderr = true
 
 var lock sync.RWMutex
 var config = &Config{}
-var defaultDiag = &Diag{"default", 3}
+var defaultDiag = &Diag{section: "default", uplevel: 3}
 var slog *syslog.Writer
 
 type Diag struct {
-	section string
-	uplevel int
+	section  string
+	uplevel  int
+	mailto   string
+	mailfrom string
 }
 
 type Config struct {
@@ -74,6 +76,20 @@ func init() {
 	hostname, _ = os.Hostname()
 	prog, _ := os.Executable()
 	progname = path.Base(prog)
+}
+
+func (d *Diag) WithMailTo(e string) *Diag {
+	var n Diag
+	n = *d
+	n.mailto = e
+	return &n
+}
+
+func (d *Diag) WithMailFrom(e string) *Diag {
+	var n Diag
+	n = *d
+	n.mailfrom = e
+	return &n
 }
 
 func (d *Diag) Verbose(format string, args ...interface{}) {
@@ -226,22 +242,30 @@ func diag(cf logconf, d *Diag, format string, args []interface{}) {
 
 	// email
 	if cf.to_email {
-		sendEmail(out, cf.with_trace)
+		sendEmail(d, out, cf.with_trace)
 	}
 
 }
 
-func sendEmail(txt string, with_trace bool) {
+func sendEmail(d *Diag, txt string, with_trace bool) {
 
 	cf := getConfig()
-	if cf == nil || cf.Mailto == "" || cf.Mailfrom == "" {
+
+	if d.mailto == "" {
+		d.mailto = cf.Mailto
+	}
+	if d.mailfrom == "" {
+		d.mailfrom = cf.Mailfrom
+	}
+
+	if cf == nil || d.mailto == "" || d.mailfrom == "" {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sendmail", "-t", "-f", cf.Mailfrom)
+	cmd := exec.CommandContext(ctx, "sendmail", "-t", "-f", d.mailfrom)
 
 	p, _ := cmd.StdinPipe()
 	cmd.Stdout = os.Stdout
@@ -251,7 +275,7 @@ func sendEmail(txt string, with_trace bool) {
 
 	go func() {
 		fmt.Fprintf(p, "To: %s\nFrom: %s\nSubject: %s daemon error\n\n",
-			cf.Mailto, cf.Mailfrom, progname)
+			d.mailto, d.mailfrom, progname)
 
 		fmt.Fprintf(p, "an error was detected in %s\n\nhost:   %s\npid:    %d\n\n",
 			progname, hostname, os.Getpid())
